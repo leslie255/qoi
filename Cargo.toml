@@ -1,0 +1,8 @@
+[package]
+name = "qoi"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+image = "0.25"
+derive_more = { version = "*", features = ["full"] }
