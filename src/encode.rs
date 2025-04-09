@@ -1,32 +1,80 @@
 #![allow(dead_code)]
 
 use std::{
-    io::{self, Write},
+    io::{self, BufWriter, Cursor, Write},
     iter::Peekable,
-    mem::transmute,
+    path::Path,
 };
 
-use crate::{Header, qoi_hash};
+use crate::{Channels, Header, qoi_hash};
 
-pub fn encode(header: Header, pixels: impl Iterator<Item = [u8; 4]>, output: &mut impl Write) {
+pub fn encode(
+    header: Header,
+    pixels: impl Iterator<Item = [u8; 4]>,
+    output: &mut impl Write,
+) -> io::Result<()> {
     let mut pixels = pixels.peekable();
-    let mut encoder = EncoderState::new(header, output);
-    encoder.encode_header().unwrap();
+    let mut encoder = Encoder::new(header, output);
+    encoder.encode_header()?;
     while pixels.peek().is_some() {
-        encoder.encode_chunk(&mut pixels).unwrap();
+        encoder.encode_chunk(&mut pixels)?;
     }
-    encoder.finish().unwrap();
+    encoder.finish()?;
+    Ok(())
+}
+
+pub fn encode_from_slice(header: Header, slice: &[u8], output: &mut impl Write) -> io::Result<()> {
+    match header.channels {
+        Channels::Rgb => {
+            let pixels = array_chunks::<_, 3>(slice)
+                .copied()
+                .map(|[r, g, b]| [r, g, b, 255]);
+            encode(header, pixels, output)
+        }
+        Channels::Rgba => {
+            let pixels = array_chunks::<_, 4>(slice).copied();
+            encode(header, pixels, output)
+        }
+    }
+}
+
+pub fn encode_from_slice_to_vec(header: Header, slice: &[u8]) -> io::Result<Vec<u8>> {
+    let mut encoded_data = Vec::new();
+    encode_from_slice(header, slice, &mut Cursor::new(&mut encoded_data))?;
+    Ok(encoded_data)
+}
+
+pub fn encode_from_slice_to_file(
+    header: Header,
+    slice: &[u8],
+    path: impl AsRef<Path>,
+) -> io::Result<()> {
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .read(false)
+        .truncate(true)
+        .create(true)
+        .append(false)
+        .open(path)?;
+    encode_from_slice(header, slice, &mut BufWriter::new(file))
+}
+
+/// Stable implementation of `array_chunks`.
+fn array_chunks<T, const N: usize>(slice: &[T]) -> impl Iterator<Item = &[T; N]> {
+    slice.chunks_exact(N).map(|slice| {
+        debug_assert!(slice.len() == N);
+        let ptr = slice.as_ptr() as *const [T; N];
+        unsafe { &*ptr }
+    })
 }
 
 #[inline(always)]
 pub(crate) fn u8_to_i8(x: u8) -> i8 {
-    // Safety: u8 to i8 is always safe.
-    // Note that unlike C, u8 can't carry provenance in rust.
-    unsafe { transmute::<u8, i8>(x) }
+    i8::from_ne_bytes([x])
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct EncoderState<W: Write> {
+pub(crate) struct Encoder<W: Write> {
     pub(crate) header: Header,
     pub(crate) index_array: [[u8; 4]; 64],
     pub(crate) previous_pixel: [u8; 4],
@@ -35,7 +83,7 @@ pub(crate) struct EncoderState<W: Write> {
     pub(crate) last_op_was_index: bool,
 }
 
-impl<W: Write> EncoderState<W> {
+impl<W: Write> Encoder<W> {
     pub(crate) fn new(header: Header, output: W) -> Self {
         Self {
             header,
