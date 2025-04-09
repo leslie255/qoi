@@ -1,8 +1,5 @@
 use std::{
-    error::Error,
-    fs::OpenOptions,
-    io::{self, BufReader, Cursor, Read, Write},
-    path::Path,
+    error::Error, fmt::{self, Debug, Display}, fs::OpenOptions, io::{self, BufReader, Cursor, Read, Write}, path::Path
 };
 
 use crate::{Channels, Colorspace, Header, qoi_hash};
@@ -23,13 +20,25 @@ pub(crate) trait ReadExt: Read {
 
 impl<R: Read> ReadExt for R {}
 
-#[derive(Debug, derive_more::Display, derive_more::From)]
+#[derive(Debug)]
 pub enum DecodeError {
     IoError(io::Error),
     InvalidHeader,
     InvalidNumberOfChannels,
     InvalidColorspace,
     InvalidEofSequence,
+}
+
+impl From<io::Error> for DecodeError {
+    fn from(v: io::Error) -> Self {
+        Self::IoError(v)
+    }
+}
+
+impl Display for DecodeError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        Debug::fmt(self, f)
+    }
 }
 
 impl Error for DecodeError {
@@ -192,6 +201,7 @@ pub fn decode(input: &mut impl Read, output: &mut impl Write) -> Result<Header, 
     Ok(header)
 }
 
+/// Convenience function that calls `decode`.
 pub fn decode_to_vec(input: &mut impl Read) -> Result<(Vec<u8>, Header), DecodeError> {
     let mut data = Vec::new();
     let mut cursor = Cursor::new(&mut data);
@@ -199,37 +209,27 @@ pub fn decode_to_vec(input: &mut impl Read) -> Result<(Vec<u8>, Header), DecodeE
     Ok((data, header))
 }
 
-pub fn decode_from_data(data: &[u8]) -> Result<(Vec<u8>, Header), DecodeError> {
-    let mut output = Vec::new();
-    let header = decode(&mut Cursor::new(data), &mut Cursor::new(&mut output)).unwrap();
-    Ok((output, header))
+fn read_file(path: impl AsRef<Path>) -> io::Result<impl Read> {
+    let file = OpenOptions::new()
+        .read(true)
+        .write(false)
+        .create(false)
+        .open(&path)?;
+    Ok(BufReader::new(file))
 }
 
+/// Convenience function that calls `decode`.
 pub fn decode_from_file(
     path: impl AsRef<Path>,
     output: &mut impl Write,
 ) -> Result<Header, DecodeError> {
-    let file = OpenOptions::new()
-        .read(true)
-        .write(false)
-        .create(false)
-        .open(&path)
-        .unwrap();
-    let mut reader = BufReader::new(file);
+    let mut reader = read_file(path)?;
     let header = decode(&mut reader, output).unwrap();
     Ok(header)
 }
 
+/// Convenience function that calls `decode`.
 pub fn decode_from_file_to_vec(path: impl AsRef<Path>) -> Result<(Vec<u8>, Header), DecodeError> {
-    let file = OpenOptions::new()
-        .read(true)
-        .write(false)
-        .create(false)
-        .open(&path)
-        .unwrap();
-    let mut reader = BufReader::new(file);
-    let mut data = Vec::new();
-    let mut cursor = Cursor::new(&mut data);
-    let header = decode(&mut reader, &mut cursor).unwrap();
-    Ok((data, header))
+    let mut reader = read_file(path)?;
+    decode_to_vec(&mut reader)
 }
