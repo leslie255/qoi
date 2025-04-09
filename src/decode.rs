@@ -166,6 +166,7 @@ pub(crate) fn decode_chunk(
                 }
             }
             state.n_pixels += run as usize;
+            state.index_array[qoi_hash(state.previous_pixel)] = state.previous_pixel;
             return Ok(());
         }
     };
