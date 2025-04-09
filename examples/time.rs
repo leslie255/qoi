@@ -8,6 +8,7 @@ fn main() {
         .unwrap_or_else(|| panic!("Expects one arguments as input file"));
 
     let file_data = std::fs::read(&input_path).unwrap();
+
     let before_decode = Instant::now();
     let (decoded_data, header) = qoi::decode_to_vec(&mut Cursor::new(&file_data)).unwrap();
     let after_decode = Instant::now();
