@@ -69,6 +69,10 @@ impl<W: Write> EncoderState<W> {
         let pixel = pixels.next().unwrap();
         if let Some(byte) = self.try_run(pixel, pixels) {
             self.output.write_all(&[byte])?;
+        } else if pixel[3] != self.previous_pixel[3] {
+            // All other methods require currnet alpha = previous alpha.
+            let bytes = self.encode_with_op_rgba(pixel);
+            self.output.write_all(&bytes)?;
         } else if let Some(byte) = self.try_encode_with_op_index(pixel) {
             self.output.write_all(&[byte])?;
         } else if let Some(byte) = self.try_encode_with_op_diff(pixel) {
@@ -81,7 +85,8 @@ impl<W: Write> EncoderState<W> {
             let bytes = self.encode_with_op_rgba(pixel);
             self.output.write_all(&bytes)?;
         }
-        self.update_previous_pixel(pixel);
+        self.previous_pixel = pixel;
+        self.index_array[qoi_hash(pixel)] = pixel;
         Ok(())
     }
 
@@ -154,7 +159,7 @@ impl<W: Write> EncoderState<W> {
 
     /// This OP would only fail for images with an alpha channel.
     pub(crate) fn try_encode_with_op_rgb(&mut self, pixel: [u8; 4]) -> Option<[u8; 4]> {
-        (pixel[3] != self.previous_pixel[3]).then_some([0b11111110, pixel[0], pixel[1], pixel[2]])
+        (pixel[3] == self.previous_pixel[3]).then_some([0b11111110, pixel[0], pixel[1], pixel[2]])
     }
 
     /// This OP would never fail.

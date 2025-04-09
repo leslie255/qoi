@@ -2,11 +2,10 @@
 
 use std::{
     fs::File,
-    io::{self, BufWriter, Cursor, Write as _},
+    io::{self, BufWriter, Write as _},
     path::Path,
 };
 
-mod bmp;
 pub mod decode;
 pub mod encode;
 
@@ -96,22 +95,5 @@ fn main() {
         }
     }
 
-    println!("encoded size: {}", encoded_data.len());
-
-    save_data("encoded.qoi", &encoded_data).unwrap();
-
-    let mut reader = Cursor::new(encoded_data);
-    let (data, header) = decode::decode_to_vec(&mut reader).unwrap();
-
-    bmp::save_bmp(
-        "output.bmp",
-        header.width,
-        header.height,
-        match header.channels {
-            Channels::Rgb => bmp::PixelFormat::Rgb8,
-            Channels::Rgba => bmp::PixelFormat::Rgba8,
-        },
-        &data,
-    )
-    .unwrap();
+    save_data("roundtripped.qoi", &encoded_data).unwrap();
 }

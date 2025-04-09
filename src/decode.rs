@@ -199,6 +199,12 @@ pub fn decode_to_vec(input: &mut impl Read) -> Result<(Vec<u8>, Header), DecodeE
     Ok((data, header))
 }
 
+pub fn decode_from_data(data: &[u8]) -> Result<(Vec<u8>, Header), DecodeError> {
+    let mut output = Vec::new();
+    let header = decode(&mut Cursor::new(data), &mut Cursor::new(&mut output)).unwrap();
+    Ok((output, header))
+}
+
 pub fn decode_from_file(
     path: impl AsRef<Path>,
     output: &mut impl Write,
